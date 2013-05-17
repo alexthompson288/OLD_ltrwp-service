@@ -1,0 +1,106 @@
+#!/bin/bash
+
+### BEGIN INIT INFO
+# Provides:          blweb
+# Short-Description: Start daemon at boot time
+# Description:       Enable service provided by daemon.
+# Required-Start:    $all
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# pidfile: /var/run/blwebapp.pid
+# logfile: /var/log/blwebapp.log
+### END INIT INFO
+
+# Source function library.
+. /lib/lsb/init-functions
+
+path=$path:/user/local/bin
+
+USER=webapp
+NAME=altitude-ws
+APPDIR=/home/webapp/al-data-testproject/server
+pidfile=/var/run/$NAME.pid
+logfile=/var/log/$NAME.log
+forever_dir=/var/local/forever        # Forever root directory.
+
+node=/usr/local/bin/node
+forever=/usr/local/bin/forever
+sed=sed
+
+start() {
+    echo "Starting $NAME node instance: "
+
+    if [ "$foreverid" == "" ]; then
+        # Create the log and pid files, making sure that the target use has access to them
+        touch $logfile
+        chown $USER $logfile
+
+        touch $pidfile
+        chown $USER $pidfile
+
+        # Launch the application
+        command="$forever start --pidFile $pidfile -l $logfile -o $logfile -e $logfile -a -d $APPDIR"
+        su $USER -c "$command"
+    else
+        echo "Instance already running"
+    fi
+    RETVAL=$?
+}
+
+restart() {
+    echo -n "Restarting $NAME node instance : "
+    if [ "$foreverid" != "" ]; then
+        command="$forever restart -p $forever_dir"
+        su $USER -c "$command"
+        RETVAL=$?
+    else
+        start
+    fi
+}
+
+stop() {
+    echo -n "Shutting down $NAME node instance : "
+    if [ "$foreverid" != "" ]; then
+        command="$forever stop $APPDIR"
+        su $USER -c "$command"
+    else
+        echo "Instance is not running";
+    fi
+    RETVAL=$?
+}
+
+if [ -f $pidfile ]; then
+    read pid < $pidfile
+else
+    pid = ""
+fi
+
+if [ "$pid" != "" ]; then
+    sed1="s/\x1b\[[0-9]*m//g" # strip colours
+    sed2="/$pid/p" # only line with pid
+    sed3="s/.*\s\+$pid\s\+\([0-9]\+\).*/\1/" # forever id comes after pid
+    foreverid=`su $USER -c "forever list" | $sed "$sed1" | $sed -n "$sed2" | $sed "$sed3"`
+else
+    foreverid=""
+fi
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    status)
+        status -p ${pidfile}
+        ;;
+    restart)
+        restart
+        ;;
+    *)
+        echo "Usage:  {start|stop|status|restart}"
+        exit 1
+        ;;
+esac
+exit $RETVAL
